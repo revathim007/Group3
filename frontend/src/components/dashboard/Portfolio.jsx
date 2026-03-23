@@ -10,6 +10,7 @@ const Portfolio = () => {
   const [stockSearch, setStockSearch] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [selectedStocks, setSelectedStocks] = useState([]);
+  const [addingToCollection, setAddingToCollection] = useState({});
 
   const fetchPortfolios = async () => {
     setLoading(true);
@@ -103,6 +104,58 @@ const Portfolio = () => {
     }
   };
 
+  const handleDeletePortfolio = async (portfolioId, portfolioName) => {
+    if (window.confirm(`Are you sure you want to delete the portfolio "${portfolioName}"?`)) {
+      try {
+        await axios.delete(`http://localhost:8000/api/stocks/portfolios/${portfolioId}/`);
+        alert('Portfolio deleted successfully!');
+        fetchPortfolios();
+      } catch (error) {
+        console.error('Error deleting portfolio:', error);
+        alert('Failed to delete portfolio.');
+      }
+    }
+  };
+
+  const handleBulkAddToCollection = async (portfolio) => {
+    if (!portfolio.items || portfolio.items.length === 0) {
+      alert('This portfolio has no stocks to add.');
+      return;
+    }
+
+    setAddingToCollection(prev => ({ ...prev, [portfolio.id]: true }));
+    try {
+      const userData = JSON.parse(localStorage.getItem('user'));
+      const promises = portfolio.items.map(item => 
+        axios.post('http://localhost:8000/api/stocks/collections/', {
+          user_id: userData.id,
+          stock_id: item.stock.id,
+          portfolio_name: portfolio.name
+        })
+      );
+      
+      await Promise.all(promises);
+      alert(`All stocks from "${portfolio.name}" added to your collection!`);
+    } catch (error) {
+      console.error('Error adding stocks to collection:', error);
+      alert('Some stocks might already be in your collection or failed to add.');
+    } finally {
+      setAddingToCollection(prev => ({ ...prev, [portfolio.id]: false }));
+    }
+  };
+
+  const getPortfolioColor = (index) => {
+    const colors = [
+      { border: 'border-blue-100', bg: 'bg-blue-50', text: 'text-blue-600' },
+      { border: 'border-purple-100', bg: 'bg-purple-50', text: 'text-purple-600' },
+      { border: 'border-orange-100', bg: 'bg-orange-50', text: 'text-orange-600' },
+      { border: 'border-pink-100', bg: 'bg-pink-50', text: 'text-pink-600' },
+      { border: 'border-indigo-100', bg: 'bg-indigo-50', text: 'text-indigo-600' },
+      { border: 'border-green-100', bg: 'bg-green-50', text: 'text-green-600' },
+    ];
+    return colors[index % colors.length];
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -133,73 +186,96 @@ const Portfolio = () => {
 
       {portfolios.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {portfolios.map((portfolio) => (
-            <div key={portfolio.id} className="bg-white rounded-[2rem] shadow-xl border border-gray-100 overflow-hidden group hover:shadow-2xl transition-all duration-300 flex flex-col">
-              <div className="p-8 flex-1">
-                <div className="flex justify-between items-start mb-6">
-                  <span className="px-3 py-1 bg-green-50 text-green-600 text-[10px] font-black rounded-lg uppercase tracking-widest">
-                    ID: {portfolio.portfolio_id}
-                  </span>
-                  <div className="text-gray-400 hover:text-red-500 transition-colors cursor-pointer">
-                    <Trash2 size={18} />
-                  </div>
-                </div>
-                
-                <h3 className="text-2xl font-black text-gray-900 mb-2 group-hover:text-green-600 transition-colors">
-                  {portfolio.name}
-                </h3>
-                
-                <div className="flex items-center text-gray-400 text-xs font-bold mb-6">
-                  <Calendar size={14} className="mr-1.5" />
-                  <span>Created {new Date(portfolio.created_at).toLocaleDateString()}</span>
-                </div>
-
-                <div className="space-y-4 mb-8">
-                  <div className="flex justify-between items-center pb-3 border-b border-gray-50">
-                    <span className="text-gray-500 font-bold text-xs uppercase tracking-wider">Asset Value</span>
-                    <span className="text-lg font-black text-gray-900">
-                      ₹{calculateTotalValue(portfolio.items).toLocaleString('en-IN')}
+          {portfolios.map((portfolio, index) => {
+            const cardColor = getPortfolioColor(index);
+            return (
+              <div key={portfolio.id} className={`bg-white rounded-[2rem] shadow-xl border ${cardColor.border} overflow-hidden group hover:shadow-2xl transition-all duration-300 flex flex-col`}>
+                <div className="p-8 flex-1">
+                  <div className="flex justify-between items-start mb-6">
+                    <span className={`px-3 py-1 ${cardColor.bg} ${cardColor.text} text-[10px] font-black rounded-lg uppercase tracking-widest`}>
+                      ID: {portfolio.portfolio_id}
                     </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500 font-bold text-xs uppercase tracking-wider">Stocks</span>
-                    <span className="text-sm font-black text-green-600 bg-green-50 px-3 py-1 rounded-full">
-                      {portfolio.items.length} Items
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {portfolio.items.slice(0, 3).map((item) => (
-                    <div key={item.stock.id} className="flex items-center space-x-1 bg-gray-50 px-2.5 py-1 rounded-md border border-gray-100">
-                      <span className="text-[10px] font-black text-gray-400 uppercase">
-                        {item.stock.symbol.split('.')[0]}
-                      </span>
-                      <span className="text-[10px] font-black text-green-600">x{item.quantity}</span>
+                    <div 
+                      onClick={() => handleDeletePortfolio(portfolio.id, portfolio.name)}
+                      className="text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={18} />
                     </div>
-                  ))}
-                  {portfolio.items.length > 3 && (
-                    <span className="text-[10px] font-black bg-gray-50 text-gray-400 px-2.5 py-1 rounded-md uppercase border border-gray-100">
-                      +{portfolio.items.length - 3} More
-                    </span>
+                  </div>
+                  
+                  <h3 className="text-2xl font-black text-gray-900 mb-2 group-hover:text-green-600 transition-colors">
+                    {portfolio.name}
+                  </h3>
+                  
+                  {portfolio.description && (
+                    <p className="text-gray-500 text-xs font-medium mb-4 line-clamp-2">
+                      {portfolio.description}
+                    </p>
                   )}
+                  
+                  <div className="flex items-center text-gray-400 text-xs font-bold mb-6">
+                    <Calendar size={14} className="mr-1.5" />
+                    <span>Created {new Date(portfolio.created_at).toLocaleDateString()}</span>
+                  </div>
+
+                  <div className="space-y-4 mb-8">
+                    <div className="flex justify-between items-center pb-3 border-b border-gray-50">
+                      <span className="text-gray-500 font-bold text-xs uppercase tracking-wider">Asset Value</span>
+                      <span className="text-lg font-black text-gray-900">
+                        ₹{calculateTotalValue(portfolio.items).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500 font-bold text-xs uppercase tracking-wider">Stocks</span>
+                      <span className={`text-sm font-black ${cardColor.text} ${cardColor.bg} px-3 py-1 rounded-full`}>
+                        {portfolio.items.length} Items
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {portfolio.items.slice(0, 3).map((item) => (
+                      <div key={item.stock.id} className="flex items-center space-x-1 bg-gray-50 px-2.5 py-1 rounded-md border border-gray-100">
+                        <span className="text-[10px] font-black text-gray-400 uppercase">
+                          {item.stock.symbol.split('.')[0]}
+                        </span>
+                        <span className={`text-[10px] font-black ${cardColor.text}`}>x{item.quantity}</span>
+                      </div>
+                    ))}
+                    {portfolio.items.length > 3 && (
+                      <span className="text-[10px] font-black bg-gray-50 text-gray-400 px-2.5 py-1 rounded-md uppercase border border-gray-100">
+                        +{portfolio.items.length - 3} More
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="px-8 pb-8 space-y-3">
+                  <button 
+                    onClick={() => handleOpenAddModal(portfolio)}
+                    className={`w-full ${cardColor.bg} ${cardColor.text} hover:opacity-80 p-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center border ${cardColor.border}`}
+                  >
+                    <Plus size={16} className="mr-2" />
+                    Add Stocks
+                  </button>
+                  <button 
+                    onClick={() => handleBulkAddToCollection(portfolio)}
+                    disabled={addingToCollection[portfolio.id]}
+                    className="w-full bg-gray-50 hover:bg-gray-900 hover:text-white p-3 rounded-xl text-xs font-black text-gray-400 uppercase tracking-widest transition-all border border-gray-100 flex items-center justify-center"
+                  >
+                    {addingToCollection[portfolio.id] ? (
+                      <span className="flex items-center">
+                        <Layers size={14} className="animate-spin mr-2" />
+                        Adding...
+                      </span>
+                    ) : (
+                      'Add to My Collection'
+                    )}
+                  </button>
                 </div>
               </div>
-              
-              <div className="px-8 pb-8 space-y-3">
-                <button 
-                  onClick={() => handleOpenAddModal(portfolio)}
-                  className="w-full bg-green-50 text-green-600 hover:bg-green-600 hover:text-white p-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center border border-green-100"
-                >
-                  <Plus size={16} className="mr-2" />
-                  Add Stocks
-                </button>
-                <button className="w-full bg-gray-50 hover:bg-gray-900 hover:text-white p-3 rounded-xl text-xs font-black text-gray-400 uppercase tracking-widest transition-all border border-gray-100">
-                  View Detailed Analytics
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="bg-white p-20 rounded-[3rem] shadow-xl border-2 border-dashed border-gray-100 flex flex-col items-center justify-center text-center">

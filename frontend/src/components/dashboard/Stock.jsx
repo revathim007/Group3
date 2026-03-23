@@ -7,8 +7,11 @@ const Stock = () => {
   const [loading, setLoading] = useState(false);
   const [addingToCollection, setAddingToCollection] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedStock, setSelectedStock] = useState(null);
   const [historyData, setHistoryData] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [isInCollection, setIsInCollection] = useState(false);
 
   const checkIfInCollection = async (stockId) => {
@@ -43,29 +46,55 @@ const Stock = () => {
   };
 
   const fetchStockDetails = async (stock) => {
+    setHistoryLoading(true);
     try {
       const historyRes = await axios.get(`http://localhost:8000/api/stocks/history/${stock.symbol}/`);
       setHistoryData(historyRes.data);
       await checkIfInCollection(stock.id);
     } catch (error) {
       console.error('Error fetching stock history:', error);
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
-    
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (searchQuery.length < 2) {
+        setSuggestions([]);
+        return;
+      }
+      try {
+        const response = await axios.get(`http://localhost:8000/api/stocks/?search=${searchQuery}`);
+        setSuggestions(response.data);
+      } catch (error) {
+        console.error('Error fetching suggestions:', error);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      if (showSuggestions) {
+        fetchSuggestions();
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, showSuggestions]);
+
+  const executeSearch = async (query) => {
+    if (!query.trim()) return;
+
     setLoading(true);
+    setShowSuggestions(false);
+    setHistoryData([]); // Reset history for new search
     try {
-      const response = await axios.get(`http://localhost:8000/api/stocks/?search=${searchQuery}`);
+      const response = await axios.get(`http://localhost:8000/api/stocks/?search=${query}`);
       if (response.data.length > 0) {
         const stock = response.data[0];
         setSelectedStock(stock);
-        await fetchStockDetails(stock);
+        fetchStockDetails(stock);
       } else {
         setSelectedStock(null);
-        setHistoryData([]);
         setIsInCollection(false);
         alert('Stock not found in our database');
       }
@@ -74,6 +103,16 @@ const Stock = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    executeSearch(searchQuery);
+  };
+
+  const handleSuggestionClick = (stock) => {
+    setSearchQuery(stock.name); // Update input to reflect selection
+    executeSearch(stock.symbol); // Search by symbol for accuracy
   };
 
   const getCurrencyIcon = (currency) => {
@@ -95,7 +134,7 @@ const Stock = () => {
 
       <div className="flex flex-col space-y-8">
         {/* Search Bar */}
-        <form onSubmit={handleSearch} className="w-full flex gap-3">
+        <form onSubmit={handleSearch} className="w-full flex gap-3 relative">
           <div className="flex-1 relative group">
             <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
               <Search className="text-gray-400 group-focus-within:text-green-600 transition-colors" size={22} />
@@ -103,10 +142,39 @@ const Stock = () => {
             <input 
               type="text" 
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
               placeholder="Search by Symbol (e.g. RELIANCE, AAPL) or Company Name..." 
               className="w-full pl-14 pr-4 py-5 bg-white border-2 border-gray-100 rounded-3xl shadow-sm focus:ring-4 focus:ring-green-100 focus:border-green-500 outline-none transition-all text-gray-700 font-semibold text-lg"
             />
+            
+            {/* Suggestions Dropdown */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute z-50 w-full mt-2 bg-white border border-gray-100 rounded-3xl shadow-2xl max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+                {suggestions.map((stock) => (
+                  <div 
+                    key={stock.id}
+                    onClick={() => handleSuggestionClick(stock)}
+                    className="p-5 hover:bg-green-50 cursor-pointer transition-colors border-b border-gray-50 last:border-0 flex justify-between items-center group"
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-black text-gray-900 group-hover:text-green-700 text-lg">{stock.symbol.split('.')[0]}</span>
+                      <span className="text-sm text-gray-500 font-bold uppercase">{stock.name}</span>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      <span className="text-sm font-black text-gray-900">
+                        {formatCurrency(stock.current_price, stock.currency)}
+                      </span>
+                      <ArrowUpRight size={20} className="text-gray-300 group-hover:text-green-600 transition-colors" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <button 
             type="submit"
@@ -210,7 +278,12 @@ const Stock = () => {
               </div>
               
               <div className="h-96 w-full">
-                {historyData.length > 0 ? (
+                {historyLoading ? (
+                  <div className="h-full flex flex-col items-center justify-center text-gray-400 font-bold space-y-4">
+                    <RefreshCw className="animate-spin text-green-500" size={40} />
+                    <span className="animate-pulse">Analyzing Market Trends...</span>
+                  </div>
+                ) : historyData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={historyData}>
                       <defs>
@@ -226,7 +299,7 @@ const Stock = () => {
                         tickLine={false} 
                         tick={{fill: '#9ca3af', fontSize: 10, fontWeight: 700}} 
                         dy={15}
-                        interval={7}
+                        interval={Math.ceil(historyData.length / 7)}
                       />
                       <YAxis 
                         hide={true} 
@@ -257,8 +330,9 @@ const Stock = () => {
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-full flex items-center justify-center text-gray-400 font-bold animate-pulse">
-                    Fetching History...
+                  <div className="h-full flex flex-col items-center justify-center text-gray-400 font-bold space-y-2">
+                    <BarChart3 size={48} className="text-gray-200" />
+                    <span>No historical data available for this period.</span>
                   </div>
                 )}
               </div>

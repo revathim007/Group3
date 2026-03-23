@@ -65,6 +65,30 @@ const MyCollections = () => {
     }
   };
 
+  const getRowColor = (index) => {
+    const colors = [
+      'border-l-blue-500',
+      'border-l-purple-500',
+      'border-l-orange-500',
+      'border-l-pink-500',
+      'border-l-indigo-500',
+      'border-l-green-500',
+    ];
+    return colors[index % colors.length];
+  };
+
+  const groupCollections = () => {
+    const groups = {};
+    collections.forEach(item => {
+      const groupName = item.portfolio_name || 'Single Stocks';
+      if (!groups[groupName]) {
+        groups[groupName] = [];
+      }
+      groups[groupName].push(item);
+    });
+    return groups;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -94,72 +118,90 @@ const MyCollections = () => {
       </header>
 
       {collections.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {collections.map((item) => (
-            <div key={item.id} className="bg-white rounded-[2rem] shadow-xl border border-gray-100 overflow-hidden group hover:shadow-2xl transition-all duration-300">
-              <div className="p-8">
-                <div className="flex justify-between items-start mb-6">
-                  <div className="flex flex-col">
-                    <span className="px-3 py-1 bg-gray-100 text-gray-500 text-[10px] font-black rounded-lg uppercase tracking-widest w-fit mb-2">
-                      {item.stock.symbol}
-                    </span>
-                    <h3 className="text-2xl font-black text-gray-900 group-hover:text-green-600 transition-colors">
-                      {item.stock.name}
-                    </h3>
-                  </div>
-                  <button 
-                    onClick={() => handleRemove(item.stock.id)}
-                    className="text-gray-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-xl"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mt-8">
-                  <div className="bg-gray-50 p-4 rounded-2xl">
-                    <span className="text-gray-400 text-[10px] font-black uppercase tracking-widest block mb-1">Price</span>
-                    <span className="text-xl font-black text-gray-900">
-                      {item.stock.currency === 'USD' ? '$' : '₹'}{parseFloat(item.stock.current_price).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-2xl">
-                    <span className="text-gray-400 text-[10px] font-black uppercase tracking-widest block mb-1">PE Ratio</span>
-                    <span className="text-xl font-black text-gray-900">
-                      {item.stock.pe_ratio ? parseFloat(item.stock.pe_ratio).toFixed(1) : 'N/A'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex items-center justify-between text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
-                  <span>{item.stock.sector}</span>
-                  <span>Added {new Date(item.added_at).toLocaleDateString()}</span>
-                </div>
-
-                {/* Quantity and Buy Section */}
-                <div className="mt-6 flex items-center gap-3">
-                  <div className="flex-1">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Quantity</label>
-                    <input 
-                      type="number" 
-                      min="1"
-                      value={quantities[item.stock.id] || 1}
-                      onChange={(e) => handleQuantityChange(item.stock.id, e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm font-black focus:ring-2 focus:ring-green-500 outline-none"
-                    />
-                  </div>
-                  <button 
-                    onClick={() => handleBuy(item.stock.id)}
-                    className="flex-[2] bg-green-600 text-white font-black py-2.5 rounded-xl text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-100 mt-4"
-                  >
-                    Buy Now
-                  </button>
-                </div>
+        <div className="space-y-12">
+          {Object.entries(groupCollections()).map(([groupName, items], groupIndex) => (
+            <div key={groupName} className="animate-in fade-in slide-in-from-left-4 duration-500">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className={`w-2 h-8 rounded-full ${groupName === 'Single Stocks' ? 'bg-gray-300' : 'bg-green-500'}`}></div>
+                <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tight">
+                  {groupName}
+                  <span className="ml-3 text-sm font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full lowercase">
+                    {items.length} {items.length === 1 ? 'stock' : 'stocks'}
+                  </span>
+                </h2>
               </div>
               
-              <div className="px-8 pb-8">
-                <button className="w-full bg-gray-900 text-white p-4 rounded-2xl text-xs font-black uppercase tracking-[0.2em] hover:bg-blue-600 transition-all shadow-lg active:scale-95">
-                  View Analysis
-                </button>
+              <div className="bg-white rounded-[2.5rem] shadow-xl border border-gray-100 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50/50 border-b border-gray-100">
+                        <th className="p-6 text-xs font-black text-gray-400 uppercase tracking-widest">Stock</th>
+                        <th className="p-6 text-xs font-black text-gray-400 uppercase tracking-widest">Price</th>
+                        <th className="p-6 text-xs font-black text-gray-400 uppercase tracking-widest">PE Ratio</th>
+                        <th className="p-6 text-xs font-black text-gray-400 uppercase tracking-widest">Sector</th>
+                        <th className="p-6 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {items.map((item, index) => (
+                        <tr key={item.id} className={`hover:bg-gray-50/50 transition-colors group border-l-4 ${getRowColor(index + groupIndex)}`}>
+                          <td className="p-6">
+                            <div className="flex flex-col">
+                              <span className="text-lg font-black text-gray-900 group-hover:text-green-600 transition-colors">
+                                {item.stock.symbol.split('.')[0]}
+                              </span>
+                              <span className="text-xs font-bold text-gray-500 uppercase mt-1">
+                                {item.stock.name}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="p-6">
+                            <span className="text-lg font-black text-gray-900">
+                              {item.stock.currency === 'USD' ? '$' : '₹'}{parseFloat(item.stock.current_price).toLocaleString()}
+                            </span>
+                          </td>
+                          <td className="p-6">
+                            <span className="text-sm font-black text-gray-700 bg-gray-100 px-3 py-1 rounded-lg">
+                              {item.stock.pe_ratio ? parseFloat(item.stock.pe_ratio).toFixed(2) : 'N/A'}
+                            </span>
+                          </td>
+                          <td className="p-6">
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                              {item.stock.sector}
+                            </span>
+                          </td>
+                          <td className="p-6 text-right">
+                            <div className="flex items-center justify-end gap-4">
+                              <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+                                <input 
+                                  type="number" 
+                                  min="1"
+                                  value={quantities[item.stock.id] || 1}
+                                  onChange={(e) => handleQuantityChange(item.stock.id, e.target.value)}
+                                  className="w-16 bg-transparent text-center text-sm font-black focus:outline-none"
+                                />
+                                <button 
+                                  onClick={() => handleBuy(item.stock.id)}
+                                  className="bg-green-600 text-white font-black px-4 py-2 rounded-lg text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-md active:scale-95"
+                                >
+                                  Buy
+                                </button>
+                              </div>
+                              <button 
+                                onClick={() => handleRemove(item.stock.id)}
+                                className="text-gray-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-xl"
+                                title="Remove from Collection"
+                              >
+                                <Trash2 size={20} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           ))}
