@@ -1,10 +1,15 @@
 
 import pandas as pd
+import os
 from django.core.management.base import BaseCommand
 from stocks.models import Stock
+from django.conf import settings
 
 class Command(BaseCommand):
     help = 'Import stocks from an Excel file'
+
+    def add_arguments(self, parser):
+        parser.add_argument('--file', type=str, help='Path to the Excel file')
 
     # Nifty indices and their corresponding sectors
     NIFTY_SECTORS = {
@@ -25,7 +30,21 @@ class Command(BaseCommand):
     }
 
     def handle(self, *args, **options):
-        file_path = 'd:\\Revathi\\Biz Metric Internship\\Project 2026\\revathiMaithiliproject\\StockVerse_Stoxie\\USA Top 200 Stocks.xlsx'
+        # Check if a file path was provided as an argument
+        file_path = options.get('file')
+        
+        if not file_path:
+            # Fallback to looking for the file in the project root (one level up from backend)
+            base_dir = settings.BASE_DIR.parent
+            file_path = os.path.join(base_dir, 'USA Top 200 Stocks.xlsx')
+        
+        self.stdout.write(f"Attempting to import from: {file_path}")
+        
+        if not os.path.exists(file_path):
+            self.stdout.write(self.style.ERROR(f'File not found: {file_path}'))
+            self.stdout.write(self.style.WARNING("Tip: You can specify the file path using --file path/to/your/file.xlsx"))
+            return
+
         try:
             df = pd.read_excel(file_path)
             for index, row in df.iterrows():

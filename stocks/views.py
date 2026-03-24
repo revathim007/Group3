@@ -8,6 +8,20 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 import yfinance as yf
 import pandas as pd
+from statsmodels.tsa.arima.model import ARIMA
+import numpy as np
+import tempfile
+import os
+
+# Set a safe location for yfinance cache
+try:
+    temp_dir = tempfile.gettempdir()
+    cache_path = os.path.join(temp_dir, "yfinance_cache")
+    if not os.path.exists(cache_path):
+        os.makedirs(cache_path, exist_ok=True)
+    yf.set_tz_cache_location(cache_path)
+except Exception as e:
+    print(f"Failed to set yfinance cache location: {str(e)}")
 
 class StockListView(generics.ListAPIView):
     queryset = Stock.objects.all()
@@ -163,3 +177,77 @@ class SentimentAnalysisView(APIView):
 
         except Exception as e:
             return Response({'error': str(e)}, status=400)
+
+class StockForecastView(APIView):
+    def get(self, request, symbol):
+        days = int(request.query_params.get('days', 7))
+        
+        try:
+            ticker = yf.Ticker(symbol)
+            # Fetch 1 year of data for training (sufficient for daily ARIMA)
+            history = ticker.history(period="1y")
+            
+            if history.empty:
+                return Response({'error': f'No historical data found for {symbol}'}, status=404)
+            
+            # Extract close prices and ensure it's a series with a clean index
+            # Drop any NaN values that yfinance might return
+            close_prices = history['Close'].dropna().copy()
+            
+            if len(close_prices) < 30:
+                return Response({'error': 'Insufficient data for prediction (need at least 30 days)'}, status=400)
+            
+            # ARIMA works better if we don't have gaps. 
+            model_data = close_prices.values.astype(float)
+            
+            # Simple ARIMA(1,1,1) is more stable for general stock prediction
+            # Use a simpler model or handle the data differently if it fails
+            try:
+                model = ARIMA(model_data, order=(1,1,1))
+                model_fit = model.fit()
+                forecast = model_fit.forecast(steps=days)
+            except Exception as arima_err:
+                # Fallback to a simpler trend-based prediction if ARIMA fails
+                print(f"ARIMA failed: {str(arima_err)}. Using fallback.")
+                last_price = float(model_data[-1])
+                # Calculate average return over the last 30 days
+                recent_data = model_data[-30:]
+                avg_return = np.mean(np.diff(recent_data) / recent_data[:-1])
+                forecast = [last_price * (1 + avg_return)**(i+1) for i in range(days)]
+            
+            # Prepare historical data (last 30 days for context)
+            historical_data = []
+            # Get the actual dates from the series
+            dates = close_prices.index
+            prices = close_prices.values
+            
+            # Take last 30 points
+            for i in range(max(0, len(prices) - 30), len(prices)):
+                historical_data.append({
+                    'date': dates[i].strftime('%Y-%m-%d'),
+                    'price': round(float(prices[i]), 2),
+                    'isForecast': False
+                })
+            
+            # Prepare forecast data
+            forecast_data = []
+            last_date = dates[-1]
+            
+            for i, price in enumerate(forecast):
+                # Simple logic: next business days (skipping weekends is complex, so we just add days)
+                next_date = last_date + timedelta(days=i+1)
+                forecast_data.append({
+                    'date': next_date.strftime('%Y-%m-%d'),
+                    'price': round(float(price), 2),
+                    'isForecast': True
+                })
+            
+            return Response({
+                'historical': historical_data,
+                'forecast': forecast_data
+            })
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc() # Log to terminal
+            return Response({'error': f'Prediction model error: {str(e)}'}, status=400)
